@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Digital Logic Based Student Attendance Classifier</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f7fb;
+    --panel: #ffffff;
+    --text: #1c1f26;
+    --muted: #6b7280;
+    --border: #e3e6ec;
+    --accent: #2f6fed;
+    --accent-soft: #eaf1ff;
+    --green: #2e7d32;
+    --green-soft: #e6f4e6;
+    --red: #c62828;
+    --red-soft: #fdeaea;
+    --amber: #b98900;
+    --amber-soft: #fff6e0;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14161c;
+      --panel: #1c1f27;
+      --text: #eef0f4;
+      --muted: #9aa1ac;
+      --border: #2b2f3a;
+      --accent: #6d9bff;
+      --accent-soft: #1c2740;
+      --green: #7fd08a;
+      --green-soft: #16321c;
+      --red: #ff8a8a;
+      --red-soft: #3a1a1a;
+      --amber: #ffd166;
+      --amber-soft: #3a2d0d;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14161c;
+    --panel: #1c1f27;
+    --text: #eef0f4;
+    --muted: #9aa1ac;
+    --border: #2b2f3a;
+    --accent: #6d9bff;
+    --accent-soft: #1c2740;
+    --green: #7fd08a;
+    --green-soft: #16321c;
+    --red: #ff8a8a;
+    --red-soft: #3a1a1a;
+    --amber: #ffd166;
+    --amber-soft: #3a2d0d;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.45;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 20px 16px 60px; }
+  header { margin-bottom: 22px; }
+  header h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  header p { color: var(--muted); margin: 0; font-size: 0.95rem; }
+  .theme-toggle {
+    float: right; border: 1px solid var(--border); background: var(--panel);
+    color: var(--text); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 0.85rem;
+  }
+  section {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px 18px 20px; margin-bottom: 18px;
+  }
+  section h2 { font-size: 1.05rem; margin: 0 0 4px; }
+  section .sub { color: var(--muted); font-size: 0.85rem; margin: 0 0 14px; }
+  .grid2 { display: grid; grid-template-columns: 1fr; gap: 18px; }
+  @media (min-width: 760px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+
+  /* --- Classifier form --- */
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 0.85rem; margin-bottom: 6px; color: var(--muted); }
+  .field input[type=range] { width: 100%; }
+  .field .val { font-weight: 600; }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; }
+  .toggle-row span.name { font-size: 0.9rem; }
+  .toggle-row span.hint { color: var(--muted); font-size: 0.75rem; display: block; }
+  .switch { position: relative; width: 44px; height: 24px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: var(--border); border-radius: 999px; cursor: pointer; transition: .15s; }
+  .slider::before { content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px;
+    background: white; border-radius: 50%; transition: .15s; }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider::before { transform: translateX(20px); }
+
+  .result-card { border-radius: 12px; padding: 16px; margin-top: 6px; border: 1px solid var(--border); }
+  .result-card.elig { background: var(--green-soft); border-color: var(--green); }
+  .result-card.not-elig { background: var(--red-soft); border-color: var(--red); }
+  .result-card h3 { margin: 0 0 6px; font-size: 1.1rem; }
+  .result-card .band { display: inline-block; font-size: 0.75rem; font-weight: 700; letter-spacing: .03em;
+    padding: 3px 9px; border-radius: 999px; margin-bottom: 8px; }
+  .band.EXCELLENT { background: #2e7d3222; color: var(--green); }
+  .band.GOOD { background: #66bb6a22; color: var(--green); }
+  .band.CONDONATION { background: #fbc02d22; color: var(--amber); }
+  .band.DETAINED { background: #e5393522; color: var(--red); }
+  .result-card p.reason { margin: 0 0 10px; font-size: 0.9rem; }
+  .bits { display: flex; gap: 8px; flex-wrap: wrap; font-family: var(--mono); font-size: 0.8rem; }
+  .bit { border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; background: var(--panel); }
+  .bit b { color: var(--accent); }
+
+  /* --- Truth table & K-map --- */
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+  th, td { border: 1px solid var(--border); padding: 6px 8px; text-align: center; }
+  th { background: var(--accent-soft); font-weight: 600; }
+  tr.f1 td.f-col { background: var(--green-soft); font-weight: 700; color: var(--green); }
+  .scrollx { overflow-x: auto; }
+  .kmap-table td { width: 46px; height: 40px; font-family: var(--mono); font-weight: 700; position: relative; }
+  .kmap-table td.one { background: var(--green-soft); color: var(--green); }
+  .expr { font-family: var(--mono); background: var(--accent-soft); border-radius: 8px; padding: 10px 12px;
+    margin: 6px 0; font-size: 0.95rem; }
+
+  /* --- Dataset table --- */
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .filters button { border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    border-radius: 999px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer; }
+  .filters button.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .data-table-wrap { max-height: 360px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .data-table-wrap table { font-size: 0.8rem; }
+  .data-table-wrap th { position: sticky; top: 0; }
+  td.pill { font-weight: 700; }
+  td.pill.ELIGIBLE { color: var(--green); }
+  td.pill.NOTELIGIBLE { color: var(--red); }
+
+  .stat-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+  .stat { flex: 1; min-width: 120px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; text-align: center; }
+  .stat .n { font-size: 1.4rem; font-weight: 700; }
+  .stat .l { font-size: 0.75rem; color: var(--muted); }
+
+  canvas { max-width: 100%; }
+  footer { text-align: center; color: var(--muted); font-size: 0.78rem; margin-top: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <button class="theme-toggle" id="themeToggle" type="button">🌓 Theme</button>
+    <h1>Digital Logic Based Student Attendance Classifier</h1>
+    <p>Combinational logic (SOP/POS, K-map, comparators, priority encoder) applied to student exam eligibility — EC2201.</p>
+  </header>
+
+  <!-- ============ 1. INTERACTIVE CLASSIFIER ============ -->
+  <section>
+    <h2>Try the classifier</h2>
+    <p class="sub">Adjust a student's record and watch F(A,B,C,D) evaluate live.</p>
+    <div class="grid2">
+      <div>
+        <div class="field">
+          <label>Attendance % — <span class="val" id="attVal">75</span>%</label>
+          <input type="range" id="attSlider" min="0" max="100" step="1" value="75">
+        </div>
+        <div class="toggle-row">
+          <span><span class="name">B — Valid medical certificate</span><span class="hint">Submitted for the shortfall period</span></span>
+          <label class="switch"><input type="checkbox" id="bToggle"><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <span><span class="name">C — Disciplinary record clear</span><span class="hint">No pending case</span></span>
+          <label class="switch"><input type="checkbox" id="cToggle" checked><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <span><span class="name">D — Remedial classes attended</span><span class="hint">Makeup classes for the shortfall</span></span>
+          <label class="switch"><input type="checkbox" id="dToggle"><span class="slider"></span></label>
+        </div>
+      </div>
+      <div>
+        <div class="result-card" id="resultCard">
+          <span class="band" id="bandPill">—</span>
+          <h3 id="eligText">—</h3>
+          <p class="reason" id="reasonText">—</p>
+          <div class="bits" id="bitsRow"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. TRUTH TABLE + K-MAP ============ -->
+  <section>
+    <h2>Truth table &amp; K-map for F(A,B,C,D)</h2>
+    <p class="sub">A = attendance≥75%, B = medical cert, C = disciplinary clear, D = remedial attended.</p>
+    <div class="grid2">
+      <div class="scrollx">
+        <table id="truthTable"></table>
+      </div>
+      <div>
+        <div class="scrollx">
+          <table class="kmap-table" id="kmapTable"></table>
+        </div>
+        <div class="expr">Canonical SOP: A'BCD + AB'CD' + AB'CD + ABCD' + ABCD</div>
+        <div class="expr">Minimized SOP: <b>F = A·C + B·C·D</b></div>
+        <div class="expr">Minimized POS: F = (A'+C')·(B'+C'+D')</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3. DATASET ============ -->
+  <section>
+    <h2>Synthetic dataset results (n = 40, seed = 42)</h2>
+    <p class="sub">Reproduced from the Python pipeline's <code>classification_results.csv</code>.</p>
+
+    <div class="stat-row" id="statRow"></div>
+
+    <div class="grid2">
+      <div>
+        <canvas id="bandChart" height="220"></canvas>
+      </div>
+      <div>
+        <canvas id="eligChart" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="filters" id="filterRow">
+      <button data-f="ALL" class="active">All</button>
+      <button data-f="ELIGIBLE">Eligible</button>
+      <button data-f="NOT ELIGIBLE">Not eligible</button>
+      <button data-f="EXCELLENT">Excellent</button>
+      <button data-f="GOOD">Good</button>
+      <button data-f="CONDONATION">Condonation</button>
+      <button data-f="DETAINED">Detained</button>
+    </div>
+
+    <div class="data-table-wrap">
+      <table id="dataTable">
+        <thead>
+          <tr><th>ID</th><th>Att%</th><th>A</th><th>B</th><th>C</th><th>D</th><th>F</th><th>Result</th><th>Band</th></tr>
+        </thead>
+        <tbody id="dataBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>Digital Logic Based Student Attendance Classifier — EC2201 project demo.</footer>
+</div>
+
+<script>
+const STUDENTS = [{"id": "S001", "att": 74.8, "A": 0, "B": 1, "C": 1, "D": 1, "F": 1, "elig": "ELIGIBLE", "band": "CONDONATION", "reason": "Attendance below 75%, but valid medical certificate + remedial classes attended."}, {"id": "S002", "att": 81.6, "A": 1, "B": 0, "C": 1, "D": 1, "F": 1, "elig": "ELIGIBLE", "band": "GOOD", "reason": "Attendance meets the 75% threshold."}, {"id": "S003", "att": 59.5, "A": 0, "B": 1, "C": 1, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S004", "att": 31.9, "A": 0, "B": 1, "C": 1, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S005", "att": 45.4, "A": 0, "B": 0, "C": 1, "D": 1, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S006", "att": 86.4, "A": 1, "B": 0, "C": 1, "D": 1, "F": 1, "elig": "ELIGIBLE", "band": "GOOD", "reason": "Attendance meets the 75% threshold."}, {"id": "S007", "att": 97.0, "A": 1, "B": 0, "C": 1, "D": 1, "F": 1, "elig": "ELIGIBLE", "band": "EXCELLENT", "reason": "Attendance meets the 75% threshold."}, {"id": "S008", "att": 89.3, "A": 1, "B": 0, "C": 1, "D": 0, "F": 1, "elig": "ELIGIBLE", "band": "GOOD", "reason": "Attendance meets the 75% threshold."}, {"id": "S009", "att": 67.5, "A": 0, "B": 0, "C": 1, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "CONDONATION", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S010", "att": 88.1, "A": 1, "B": 0, "C": 1, "D": 0, "F": 1, "elig": "ELIGIBLE", "band": "GOOD", "reason": "Attendance meets the 75% threshold."}, {"id": "S011", "att": 79.3, "A": 1, "B": 1, "C": 1, "D": 1, "F": 1, "elig": "ELIGIBLE", "band": "GOOD", "reason": "Attendance meets the 75% threshold."}, {"id": "S012", "att": 35.6, "A": 0, "B": 1, "C": 1, "D": 1, "F": 1, "elig": "ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75%, but valid medical certificate + remedial classes attended."}, {"id": "S013", "att": 74.5, "A": 0, "B": 0, "C": 1, "D": 1, "F": 0, "elig": "NOT ELIGIBLE", "band": "CONDONATION", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S014", "att": 48.7, "A": 0, "B": 0, "C": 1, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S015", "att": 42.0, "A": 0, "B": 0, "C": 1, "D": 1, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S016", "att": 99.3, "A": 1, "B": 0, "C": 1, "D": 0, "F": 1, "elig": "ELIGIBLE", "band": "EXCELLENT", "reason": "Attendance meets the 75% threshold."}, {"id": "S017", "att": 89.0, "A": 1, "B": 0, "C": 1, "D": 1, "F": 1, "elig": "ELIGIBLE", "band": "GOOD", "reason": "Attendance meets the 75% threshold."}, {"id": "S018", "att": 52.1, "A": 0, "B": 1, "C": 1, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S019", "att": 91.3, "A": 1, "B": 0, "C": 1, "D": 1, "F": 1, "elig": "ELIGIBLE", "band": "EXCELLENT", "reason": "Attendance meets the 75% threshold."}, {"id": "S020", "att": 94.0, "A": 1, "B": 0, "C": 1, "D": 1, "F": 1, "elig": "ELIGIBLE", "band": "EXCELLENT", "reason": "Attendance meets the 75% threshold."}, {"id": "S021", "att": 69.3, "A": 0, "B": 1, "C": 1, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "CONDONATION", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S022", "att": 58.0, "A": 0, "B": 1, "C": 0, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Disciplinary record not clear -> automatically ineligible."}, {"id": "S023", "att": 36.4, "A": 0, "B": 1, "C": 1, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S024", "att": 85.4, "A": 1, "B": 0, "C": 1, "D": 1, "F": 1, "elig": "ELIGIBLE", "band": "GOOD", "reason": "Attendance meets the 75% threshold."}, {"id": "S025", "att": 99.7, "A": 1, "B": 0, "C": 0, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "EXCELLENT", "reason": "Disciplinary record not clear -> automatically ineligible."}, {"id": "S026", "att": 30.8, "A": 0, "B": 0, "C": 1, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S027", "att": 48.7, "A": 0, "B": 0, "C": 1, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S028", "att": 61.8, "A": 0, "B": 0, "C": 1, "D": 1, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S029", "att": 65.0, "A": 0, "B": 1, "C": 0, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "CONDONATION", "reason": "Disciplinary record not clear -> automatically ineligible."}, {"id": "S030", "att": 50.9, "A": 0, "B": 0, "C": 1, "D": 1, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S031", "att": 83.4, "A": 1, "B": 0, "C": 1, "D": 0, "F": 1, "elig": "ELIGIBLE", "band": "GOOD", "reason": "Attendance meets the 75% threshold."}, {"id": "S032", "att": 30.0, "A": 0, "B": 0, "C": 1, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S033", "att": 91.5, "A": 1, "B": 0, "C": 1, "D": 1, "F": 1, "elig": "ELIGIBLE", "band": "EXCELLENT", "reason": "Attendance meets the 75% threshold."}, {"id": "S034", "att": 91.5, "A": 1, "B": 0, "C": 1, "D": 0, "F": 1, "elig": "ELIGIBLE", "band": "EXCELLENT", "reason": "Attendance meets the 75% threshold."}, {"id": "S035", "att": 34.8, "A": 0, "B": 0, "C": 1, "D": 1, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S036", "att": 63.3, "A": 0, "B": 0, "C": 1, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S037", "att": 59.6, "A": 0, "B": 1, "C": 1, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S038", "att": 44.1, "A": 0, "B": 0, "C": 0, "D": 0, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Disciplinary record not clear -> automatically ineligible."}, {"id": "S039", "att": 60.7, "A": 0, "B": 0, "C": 1, "D": 1, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}, {"id": "S040", "att": 53.7, "A": 0, "B": 0, "C": 1, "D": 1, "F": 0, "elig": "NOT ELIGIBLE", "band": "DETAINED", "reason": "Attendance below 75% with no valid medical/remedial cover."}];
+
+// ---------- theme toggle ----------
+const root = document.documentElement;
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const cur = root.getAttribute('data-theme');
+  root.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+});
+
+// ---------- core logic (mirrors src/digital_logic.py) ----------
+function evalF(A, B, C, D) { return (C && (A || (B && D))) ? 1 : 0; }
+function bandFor(att) {
+  if (att >= 90) return "EXCELLENT";
+  if (att >= 75) return "GOOD";
+  if (att >= 65) return "CONDONATION";
+  return "DETAINED";
+}
+function reasonFor(A, B, C, D, F) {
+  if (!C) return "Disciplinary record not clear -> automatically ineligible.";
+  if (A) return "Attendance meets the 75% threshold.";
+  if (B && D) return "Attendance below 75%, but valid medical certificate + remedial classes attended.";
+  return "Attendance below 75% with no valid medical/remedial cover.";
+}
+
+// ---------- interactive classifier ----------
+const attSlider = document.getElementById('attSlider');
+const attVal = document.getElementById('attVal');
+const bToggle = document.getElementById('bToggle');
+const cToggle = document.getElementById('cToggle');
+const dToggle = document.getElementById('dToggle');
+const resultCard = document.getElementById('resultCard');
+const bandPill = document.getElementById('bandPill');
+const eligText = document.getElementById('eligText');
+const reasonText = document.getElementById('reasonText');
+const bitsRow = document.getElementById('bitsRow');
+
+function updateClassifier() {
+  const att = parseFloat(attSlider.value);
+  attVal.textContent = att;
+  const A = att >= 75 ? 1 : 0;
+  const B = bToggle.checked ? 1 : 0;
+  const C = cToggle.checked ? 1 : 0;
+  const D = dToggle.checked ? 1 : 0;
+  const F = evalF(A, B, C, D);
+  const band = bandFor(att);
+  const reason = reasonFor(A, B, C, D, F);
+
+  resultCard.className = 'result-card ' + (F ? 'elig' : 'not-elig');
+  bandPill.className = 'band ' + band;
+  bandPill.textContent = band;
+  eligText.textContent = F ? 'ELIGIBLE — F = 1' : 'NOT ELIGIBLE — F = 0';
+  reasonText.textContent = reason;
+  bitsRow.innerHTML = `
+    <span class="bit">A=<b>${A}</b></span>
+    <span class="bit">B=<b>${B}</b></span>
+    <span class="bit">C=<b>${C}</b></span>
+    <span class="bit">D=<b>${D}</b></span>
+    <span class="bit">F=<b>${F}</b></span>`;
+}
+[attSlider, bToggle, cToggle, dToggle].forEach(el => el.addEventListener('input', updateClassifier));
+updateClassifier();
+
+// ---------- truth table ----------
+(function renderTruthTable() {
+  const tbl = document.getElementById('truthTable');
+  let html = '<thead><tr><th>A</th><th>B</th><th>C</th><th>D</th><th>F</th></tr></thead><tbody>';
+  for (let a = 0; a <= 1; a++)
+    for (let b = 0; b <= 1; b++)
+      for (let c = 0; c <= 1; c++)
+        for (let d = 0; d <= 1; d++) {
+          const f = evalF(a, b, c, d);
+          html += `<tr class="${f ? 'f1' : ''}"><td>${a}</td><td>${b}</td><td>${c}</td><td>${d}</td><td class="f-col">${f}</td></tr>`;
+        }
+  tbl.innerHTML = html + '</tbody>';
+})();
+
+// ---------- K-map ----------
+(function renderKmap() {
+  const gray = ["00", "01", "11", "10"];
+  const tbl = document.getElementById('kmapTable');
+  let html = '<thead><tr><th>AB\\CD</th>' + gray.map(g => `<th>${g}</th>`).join('') + '</tr></thead><tbody>';
+  gray.forEach(ab => {
+    const a = parseInt(ab[0]), b = parseInt(ab[1]);
+    html += `<tr><th>${ab}</th>`;
+    gray.forEach(cd => {
+      const c = parseInt(cd[0]), d = parseInt(cd[1]);
+      const f = evalF(a, b, c, d);
+      html += `<td class="${f ? 'one' : ''}">${f}</td>`;
+    });
+    html += '</tr>';
+  });
+  tbl.innerHTML = html + '</tbody>';
+})();
+
+// ---------- dataset table + stats + charts ----------
+const statRow = document.getElementById('statRow');
+const dataBody = document.getElementById('dataBody');
+let currentFilter = 'ALL';
+
+function renderStats() {
+  const total = STUDENTS.length;
+  const elig = STUDENTS.filter(s => s.F === 1).length;
+  const bands = {};
+  STUDENTS.forEach(s => bands[s.band] = (bands[s.band] || 0) + 1);
+  statRow.innerHTML = `
+    <div class="stat"><div class="n">${total}</div><div class="l">Total students</div></div>
+    <div class="stat"><div class="n" style="color:var(--green)">${elig}</div><div class="l">Eligible</div></div>
+    <div class="stat"><div class="n" style="color:var(--red)">${total - elig}</div><div class="l">Not eligible</div></div>
+    <div class="stat"><div class="n">${bands.DETAINED || 0}</div><div class="l">Detained band</div></div>`;
+}
+
+function renderTable() {
+  const rows = STUDENTS.filter(s => currentFilter === 'ALL' || s.elig === currentFilter || s.band === currentFilter);
+  dataBody.innerHTML = rows.map(s => `
+    <tr>
+      <td>${s.id}</td><td>${s.att.toFixed(1)}</td>
+      <td>${s.A}</td><td>${s.B}</td><td>${s.C}</td><td>${s.D}</td><td>${s.F}</td>
+      <td class="pill ${s.elig.replace(' ', '')}">${s.elig}</td>
+      <td>${s.band}</td>
+    </tr>`).join('');
+}
+
+document.getElementById('filterRow').addEventListener('click', (e) => {
+  if (e.target.tagName !== 'BUTTON') return;
+  currentFilter = e.target.dataset.f;
+  document.querySelectorAll('#filterRow button').forEach(b => b.classList.toggle('active', b === e.target));
+  renderTable();
+});
+
+renderStats();
+renderTable();
+
+// Charts
+const bandOrder = ["EXCELLENT", "GOOD", "CONDONATION", "DETAINED"];
+const bandCounts = bandOrder.map(b => STUDENTS.filter(s => s.band === b).length);
+new Chart(document.getElementById('bandChart'), {
+  type: 'bar',
+  data: {
+    labels: bandOrder,
+    datasets: [{ label: 'Students', data: bandCounts,
+      backgroundColor: ['#2e7d32', '#66bb6a', '#fbc02d', '#e53935'] }]
+  },
+  options: { plugins: { title: { display: true, text: 'Attendance band distribution' }, legend: { display: false } },
+    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+});
+
+const eligCounts = ['ELIGIBLE', 'NOT ELIGIBLE'].map(e => STUDENTS.filter(s => s.elig === e).length);
+new Chart(document.getElementById('eligChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Eligible', 'Not eligible'],
+    datasets: [{ label: 'Students', data: eligCounts, backgroundColor: ['#1e88e5', '#e53935'] }]
+  },
+  options: { plugins: { title: { display: true, text: 'Exam eligibility (F)' }, legend: { display: false } },
+    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+});
+</script>
+</body>
+</html>
